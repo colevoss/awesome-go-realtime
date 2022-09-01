@@ -15,22 +15,19 @@ type IRealTimeServer interface {
 }
 
 type RealtimeServer struct {
-	Hub *Hub
-
-	mu          sync.Mutex
-	connections ConnectionMap
-	register    chan *Connection
-	unregister  chan *Connection
-	upgrader    *websocket.Upgrader
+	Hub      *Hub
+	mu       sync.Mutex
+	upgrader *websocket.Upgrader
 }
 
 func NewRealtimeServer() *RealtimeServer {
 	return &RealtimeServer{
-		Hub:         NewHub(),
-		connections: make(ConnectionMap),
-		register:    make(chan *Connection),
-		unregister:  make(chan *Connection),
-		upgrader:    &websocket.Upgrader{},
+		Hub: newHub(),
+		upgrader: &websocket.Upgrader{
+			CheckOrigin: func(*http.Request) bool {
+				return true
+			},
+		},
 	}
 }
 
@@ -44,26 +41,14 @@ func (s *RealtimeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[rts] Creating connection")
 
-	conn := newConnection(c, s)
+	ctx := r.Context()
+	conn := newConnection(ctx, c, s)
+
+	defer conn.closeConnection()
 
 	log.Printf("[rts] %s created", conn)
 
-	s.register <- conn
-
-	go conn.read()
-	go conn.write()
-}
-
-func (s *RealtimeServer) Start() {
-	for {
-		select {
-		case connection := <-s.register:
-			s.registerConnection(connection)
-
-		case connection := <-s.unregister:
-			s.removeConnection(connection)
-		}
-	}
+	conn.start()
 }
 
 type ChannelHandler interface {
@@ -74,31 +59,9 @@ func (s *RealtimeServer) RegisterChannel(path string, ch ChannelHandler) {
 	factory := NewChannelFactory(path)
 
 	ch.Start(factory)
-	s.Hub.RegisterChannelFactory(factory)
+	s.Hub.registerChannelFactory(factory)
 }
 
-func (s *RealtimeServer) registerConnection(conn *Connection) {
-	log.Printf("[rts] Registering connection %s", conn)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.connections[conn] = true
-
-	log.Printf("[rts] %s registered", conn)
-}
-
-func (s *RealtimeServer) removeConnection(conn *Connection) {
-	log.Printf("[rts] Removing connection %s", conn)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, ok := s.connections[conn]
-
-	if !ok {
-		log.Printf("[rts] Conn not found. Cannot remove")
-		return
-	}
-
-	delete(s.connections, conn)
-	log.Printf("[rts] Conn removed %s", conn)
+func (s *RealtimeServer) RegisterChannelFactory(ch *ChannelFactory) {
+	s.Hub.registerChannelFactory(ch)
 }

@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"log"
 
 	"github.com/colevoss/awesome-go-realtime/server"
@@ -25,61 +26,63 @@ type TestData struct {
 	Age  int32  `json:"age"`
 }
 
-func (t *Test) TestHandler(ctx *server.Context) error {
+func (t *Test) TestHandler(ctx context.Context, event *server.Event) error {
 	var testData TestData
 
-	ctx.Data(&testData)
+	event.Data(&testData)
 
-	log.Printf("Test event for chann: %s: %v", ctx.Channel.Name, ctx.Params("id"))
+	log.Printf("Test event for chann: %s: %v", event.Channel.Name, event.Param("id"))
 	log.Printf("My Test %#v", testData)
 
 	res := &TestData{
-		Id:   "RESPONSE",
+		Id:   event.Conn.Id.String(),
 		Name: "RESPONSE MESSAGE",
 		Age:  30,
 	}
 
-	ctx.Broadcast("res-event", res)
+	event.Broadcast("res-event", res)
 
 	return nil
 }
 
-func (t *Test) TestBeforeJoin(ctx *server.Context) error {
-	log.Print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	log.Print("!!!!!!!! Before Join Called !!!!!!!!!!!!!")
-	log.Print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	log.Printf("test: %s", ctx.Conn)
+func (t *Test) TestBeforeJoin(ctx context.Context, event *server.Event) error {
+	log.Printf("test: %s", event.Conn)
 
 	return nil
 }
 
-func (t *Test) TestJoin(ctx *server.Context) error {
-	log.Printf("test: Yeah! I joined the channel id: %s", ctx.Params("id"))
+func (t *Test) TestJoin(ctx context.Context, event *server.Event) error {
+	log.Printf("test: Yeah! I joined the channel id: %s", event.Param("id"))
 
-	ctx.Send("ack", map[string]interface{}{
-		"yep": "connected",
+	event.Ack(map[string]interface{}{
+		"id":     event.Conn.Id,
+		"status": "joined",
+	})
+
+	event.Broadcast("joined", map[string]interface{}{
+		"id": event.Conn.Id,
 	})
 
 	return nil
 }
 
-func (t *Test) Leave(ctx *server.Context) error {
-	log.Printf("test: Conn leaving %s", ctx.Conn)
+func (t *Test) Leave(ctx context.Context, event *server.Event) error {
+	log.Printf("test: Conn leaving %s", event.Conn)
 
-	ctx.Broadcast("person-left", map[string]interface{}{
-		"id":            ctx.Conn.Id,
+	event.Broadcast("person-left", map[string]interface{}{
+		"id":            event.Conn.Id,
 		"what-happened": "they left",
 	})
 
 	return nil
 }
 
-func (t *Test) OtherTestHandler(ctx *server.Context) error {
+func (t *Test) OtherTestHandler(ctx context.Context, event *server.Event) error {
 	var testData TestData
 
-	ctx.Data(&testData)
+	event.Data(&testData)
 
-	log.Printf("OTHER: %s: %v", ctx.Channel.Name, ctx.Params("id"))
+	log.Printf("OTHER: %s: %v", event.Channel.Name, event.Param("id"))
 	log.Printf("My Test %#v", testData)
 
 	return nil

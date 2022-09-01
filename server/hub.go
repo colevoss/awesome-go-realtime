@@ -7,18 +7,18 @@ import (
 
 type Hub struct {
 	mu               sync.RWMutex
-	channelsCache    map[string]*internalChannel
+	channelsCache    map[string]*Channel
 	channelFactories map[string]*ChannelFactory
 }
 
-func NewHub() *Hub {
+func newHub() *Hub {
 	return &Hub{
-		channelsCache:    make(map[string]*internalChannel),
+		channelsCache:    make(map[string]*Channel),
 		channelFactories: make(map[string]*ChannelFactory),
 	}
 }
 
-func (h *Hub) RegisterChannelFactory(cf *ChannelFactory) {
+func (h *Hub) registerChannelFactory(cf *ChannelFactory) {
 	log.Printf("[hub] Registering channelfactory %s", cf.path)
 
 	if _, ok := h.channelFactories[cf.path]; ok {
@@ -28,7 +28,7 @@ func (h *Hub) RegisterChannelFactory(cf *ChannelFactory) {
 	h.channelFactories[cf.path] = cf
 }
 
-func (h *Hub) findChannel(channelName string) (*internalChannel, bool) {
+func (h *Hub) findChannel(channelName string) (*Channel, bool) {
 	log.Printf("[hub] Finding channel: %s", channelName)
 
 	h.mu.RLock()
@@ -43,7 +43,7 @@ func (h *Hub) findChannel(channelName string) (*internalChannel, bool) {
 	return nil, false
 }
 
-func (h *Hub) findOrOpenChannel(channelName string) (*internalChannel, bool) {
+func (h *Hub) findOrOpenChannel(channelName string) (*Channel, bool) {
 	if channel, ok := h.findChannel(channelName); ok {
 		return channel, ok
 	}
@@ -51,28 +51,25 @@ func (h *Hub) findOrOpenChannel(channelName string) (*internalChannel, bool) {
 	return h.openChannel(channelName)
 }
 
-func (h *Hub) openChannel(channelName string) (*internalChannel, bool) {
+func (h *Hub) openChannel(channelName string) (*Channel, bool) {
 	log.Printf("[hub] Opening Channel %s", channelName)
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
 	channelFactory, params, ok := h.findChannelFactory(channelName)
 
 	if channelFactory == nil {
 		return nil, ok
 	}
 
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	channel := channelFactory.newChannel(channelName, params, h)
-
-	go channel.start()
-
-	// Do this in a channel?????
 	h.channelsCache[channelName] = channel
 
 	return channel, true
 }
 
-func (h *Hub) closeChannel(channel *internalChannel) {
+func (h *Hub) closeChannel(channel *Channel) {
 	log.Println("[hub] Closing channel", channel.Name)
 
 	h.mu.Lock()
@@ -85,6 +82,9 @@ func (h *Hub) closeChannel(channel *internalChannel) {
 
 func (h *Hub) findChannelFactory(channelName string) (*ChannelFactory, *Params, bool) {
 	log.Printf("[hub] Finding channel factory for channel: %s", channelName)
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 
 	for _, cf := range h.channelFactories {
 		if doesMatch, params := cf.doesMatch(channelName); doesMatch {

@@ -1,54 +1,66 @@
 package server
 
-type Context struct {
-	Channel   *internalChannel
+type Event struct {
+	Channel   *Channel
 	Conn      *Connection
-	Msg       *ConnectionMessage
-	DataCache interface{}
+	Msg       *ClientMessage
+	dataCache interface{}
 }
 
-func NewContext(channel *internalChannel, conn *Connection, msg *ConnectionMessage) *Context {
-	return &Context{
+func NewEvent(channel *Channel, conn *Connection, msg *ClientMessage) *Event {
+	return &Event{
 		Channel: channel,
 		Conn:    conn,
 		Msg:     msg,
 	}
 }
 
-func (c *Context) Params(p string) string {
+func (c *Event) Param(p string) string {
 	return c.Channel.Params.Param(p)
 }
 
-func (c *Context) Event() string {
+func (c *Event) Name() string {
 	return c.Msg.Event
 }
 
-func (c *Context) Type() ConnectionEvent {
+func (c *Event) Type() ConnectionEvent {
 	return c.Msg.Type
 }
 
-func (c *Context) Data(v interface{}) error {
-	if c.DataCache != nil {
+func (c *Event) Data(v interface{}) error {
+	if c.dataCache != nil {
 		return nil
 	}
 
 	err := c.Msg.Data(v)
 
-	c.DataCache = v
+	c.dataCache = v
 
 	return err
 }
 
-func (c *Context) Broadcast(event string, data interface{}) {
+func (c *Event) Broadcast(event string, data interface{}) {
 	c.Channel.Broadcast(event, data, c.Conn)
 }
 
-func (c *Context) Emit(event string, data interface{}) {
+func (c *Event) Emit(event string, data interface{}) {
 	c.Channel.Emit(event, data)
 }
 
-func (c *Context) Send(event string, data interface{}) {
+func (c *Event) Send(event string, data interface{}) {
 	serverMessage := c.Channel.newServerMessage(event, data)
+	bytes, err := serverMessage.Marshal()
+
+	if err != nil {
+		return
+	}
+
+	c.Conn.byteSend <- bytes
+}
+
+func (c *Event) Ack(data interface{}) {
+	serverMessage := c.Channel.newServerMessage("ack", data)
+
 	bytes, err := serverMessage.Marshal()
 
 	if err != nil {

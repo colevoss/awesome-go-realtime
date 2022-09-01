@@ -5,10 +5,11 @@ import "encoding/json"
 type ConnectionEvent string
 
 const (
-	Subscribe   ConnectionEvent = "Subscribe"
-	Unsubscribe                 = "Unsubscribe"
-	ClientEvent                 = "ClientEvent"
-	ServerEvent                 = "ServerEvent"
+	Subscribe              ConnectionEvent = "Subscribe"
+	Unsubscribe                            = "Unsubscribe"
+	ClientEvent                            = "ClientEvent"
+	ServerEvent                            = "ServerEvent"
+	ServerErrorMessageType                 = "ServerError"
 )
 
 type Message struct {
@@ -16,16 +17,16 @@ type Message struct {
 	Channel string          `json:"channel"`
 }
 
-type ConnectionMessage struct {
+type ClientMessage struct {
 	Message
 	Event   string          `json:"event"`
 	RawData json.RawMessage `json:"data"`
 }
 
-type SubscribeMessage = ConnectionMessage
-type UnsubscribeMessage = ConnectionMessage
+type SubscribeMessage = ClientMessage
+type UnsubscribeMessage = ClientMessage
 
-func (cm *ConnectionMessage) Data(v interface{}) error {
+func (cm *ClientMessage) Data(v interface{}) error {
 	return json.Unmarshal(cm.RawData, v)
 }
 
@@ -37,4 +38,28 @@ type ServerMessage struct {
 
 func (sm *ServerMessage) Marshal() ([]byte, error) {
 	return json.Marshal(sm)
+}
+
+type ServerError struct {
+	Type ConnectionEvent `json:"type"`
+	Msg  string          `json:"error"`
+	Data interface{}     `json:"data"`
+}
+
+func (se *ServerError) Error() string {
+	return se.Msg
+}
+
+func (se *ServerError) Marshal() ([]byte, error) {
+	return json.Marshal(se)
+}
+
+type ServerErrorFields = map[string]interface{}
+
+func NewServerError(error string, data ServerErrorFields) *ServerError {
+	return &ServerError{
+		Type: ServerErrorMessageType,
+		Msg:  error,
+		Data: data,
+	}
 }

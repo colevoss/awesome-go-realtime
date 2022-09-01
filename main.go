@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -14,11 +15,9 @@ var addr = "localhost:8080"
 func run() error {
 	rtServer := server.NewRealtimeServer()
 
-	// cf := server.NewChannelFactory("test.{id}.channel")
-
 	otherCf := server.NewChannelFactory("test.channel")
 
-	otherCf.Handle("test", func(c *server.Context) error {
+	otherCf.Handle("test", func(ctx context.Context, c *server.Event) error {
 		c.Send("test", map[string]interface{}{
 			"yeah": "yeah",
 		})
@@ -29,10 +28,7 @@ func run() error {
 	test := &test.Test{}
 
 	rtServer.RegisterChannel("test.{id}.channel", test)
-
-	rtServer.Hub.RegisterChannelFactory(otherCf)
-
-	go rtServer.Start()
+	rtServer.RegisterChannelFactory(otherCf)
 
 	http.Handle("/rt", rtServer)
 	log.Println("Starting server:", addr)
